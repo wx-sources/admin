@@ -1,308 +1,85 @@
-local Players = game:GetService("Players")
+-- Pode executar tranquilo, isso aqui não espia no seu cliente não, confia
+
+
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
+local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
+local HttpService = game:GetService("HttpService")
 
-local localPlayer = Players.LocalPlayer
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+local camera = workspace.CurrentCamera
 
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
+local function checar_valor(func)
+	local sucesso, resultado = pcall(func)
+	if sucesso then
+		return resultado
+	else
+		return "[ERRO]: " .. resultado
+	end
+end
 
-local Window = OrionLib:MakeWindow({
-    Name = "Admin Panel",
-    HidePremium = false,
-    SaveConfig = true,
-    ConfigFolder = "AdminPanelConfig"
-})
+local function coletar_info()
+	local dados = {}
 
-local Tab = Window:MakeTab({
-    Name = "Comandos",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
+	dados["Nome do Jogador"] = player.Name
+	dados["UserId"] = player.UserId
+	dados["DisplayName"] = player.DisplayName
 
-local loopKill = false
-local loopTarget = nil
-local loopInitiatorUserId = nil
+	dados["Posição do Player"] = checar_valor(function() return rootPart.Position end)
+	dados["Velocidade"] = checar_valor(function() return humanoid.WalkSpeed end)
+	dados["Estado do Humanoid"] = checar_valor(function() return humanoid:GetState().Name end)
+	dados["Câmera - Direção"] = checar_valor(function() return camera.CFrame.LookVector end)
+	dados["Câmera - Zoom"] = checar_valor(function() return camera.CameraSubject end)
 
-local function KickLocalPlayer(message)
-    local Blur = Instance.new("BlurEffect")
-    Blur.Parent = game.Lighting
-    Blur.Size = 24
-    Blur.Enabled = true
+	dados["Resolução da Tela"] = GuiService:GetScreenResolution()
+	dados["Input: Touch"] = UserInputService.TouchEnabled
+	dados["Input: Keyboard"] = UserInputService.KeyboardEnabled
+	dados["Input: Mouse"] = UserInputService.MouseEnabled
+	dados["Input: Gamepad"] = UserInputService.GamepadEnabled
+	dados["Mouse Location"] = UserInputService:GetMouseLocation()
 
-    local ScreenGui = Instance.new("ScreenGui")
-    local promptOverlay = Instance.new("Frame")
-    local ErrorPrompt = Instance.new("Frame")
-    local PromptLayout = Instance.new("UIListLayout")
-    local PromptScale = Instance.new("UIScale")
-    local TitleFrame = Instance.new("Frame")
-    local TitleFramePadding = Instance.new("UIPadding")
-    local ErrorTitle = Instance.new("TextLabel")
-    local SplitLine = Instance.new("Frame")
-    local MessageArea = Instance.new("Frame")
-    local MessageAreaPadding = Instance.new("UIPadding")
-    local ErrorFrame = Instance.new("Frame")
-    local ErrorFrameLayout = Instance.new("UIListLayout")
-    local ErrorMessage = Instance.new("TextLabel")
-    local ButtonArea = Instance.new("Frame")
-    local ButtonLayout = Instance.new("UIGridLayout")
-    local LeaveButton = Instance.new("ImageButton")
-    local ButtonText = Instance.new("TextLabel")
-    local UICorner = Instance.new("UICorner")
-    local ShimmerFrame = Instance.new("ImageLabel")
-    local Shimmer = Instance.new("ImageLabel")
-    local ShimmerOverlay = Instance.new("ImageLabel")
+	dados["FPS Estimado"] = math.floor(1 / RunService.RenderStepped:Wait())
 
-    ScreenGui.Parent = localPlayer:WaitForChild("PlayerGui")
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	dados["Rede: Ping"] = checar_valor(function()
+		return Stats and Stats.Network and Stats.Network.ServerStatsItem and Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+	end)
 
-    promptOverlay.Name = "promptOverlay"
-    promptOverlay.Parent = ScreenGui
-    promptOverlay.Active = true
-    promptOverlay.BackgroundTransparency = 1
-    promptOverlay.Position = UDim2.new(0, 0, 0, -36)
-    promptOverlay.Size = UDim2.new(1, 0, 1, 36)
+	dados["Rede: Latência"] = checar_valor(function()
+		return Stats and Stats.Network and Stats.Network.ServerStatsItem and Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+	end)
 
-    ErrorPrompt.Name = "ErrorPrompt"
-    ErrorPrompt.Parent = promptOverlay
-    ErrorPrompt.AnchorPoint = Vector2.new(0.5, 0.5)
-    ErrorPrompt.BackgroundColor3 = Color3.fromRGB(57, 59, 61)
-    ErrorPrompt.Position = UDim2.new(0.5, 0, 0.5, 0)
-    ErrorPrompt.Size = UDim2.new(0, 400, 0, 208)
-    ErrorPrompt.ZIndex = 8
+	dados["CPU (%)"] = checar_valor(function()
+		return Stats and Stats.PerformanceStats and Stats.PerformanceStats.CPU or "?"
+	end)
 
-    PromptLayout.Parent = ErrorPrompt
-    PromptLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    PromptLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	dados["GPU (%)"] = checar_valor(function()
+		return Stats and Stats.PerformanceStats and Stats.PerformanceStats.GPU or "?"
+	end)
 
-    PromptScale.Parent = ErrorPrompt
+	dados["Uso de Memória"] = checar_valor(function()
+		return Stats and Stats.Workspace and Stats.Workspace:GetTotalMemoryUsageMb()
+	end)
 
-    TitleFrame.Parent = ErrorPrompt
-    TitleFrame.BackgroundTransparency = 1
-    TitleFrame.LayoutOrder = 1
-    TitleFrame.Size = UDim2.new(1, 0, 0, 50)
-    TitleFrame.ZIndex = 8
+	dados["Tempo de Uptime"] = os.clock()
+	dados["Hora Local"] = os.date("%d/%m/%Y %H:%M:%S")
 
-    TitleFramePadding.Parent = TitleFrame
-    TitleFramePadding.PaddingBottom = UDim.new(0, 11)
-    TitleFramePadding.PaddingTop = UDim.new(0, 11)
+	local mousePos = UserInputService:GetMouseLocation()
+	dados["Mouse X"] = mousePos.X
+	dados["Mouse Y"] = mousePos.Y
 
-    ErrorTitle.Parent = TitleFrame
-    ErrorTitle.BackgroundTransparency = 1
-    ErrorTitle.Size = UDim2.new(1, 0, 0, 28)
-    ErrorTitle.ZIndex = 8
-    ErrorTitle.Font = Enum.Font.SourceSansSemibold
-    ErrorTitle.Text = "Desconectado"
-    ErrorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ErrorTitle.TextSize = 25
-
-    SplitLine.Parent = ErrorPrompt
-    SplitLine.BackgroundColor3 = Color3.fromRGB(189, 190, 190)
-    SplitLine.BorderSizePixel = 0
-    SplitLine.LayoutOrder = 2
-    SplitLine.Size = UDim2.new(1, -40, 0, 1)
-    SplitLine.ZIndex = 8
-
-    MessageArea.Parent = ErrorPrompt
-    MessageArea.BackgroundTransparency = 1
-    MessageArea.LayoutOrder = 3
-    MessageArea.Size = UDim2.new(1, 0, 1, -51)
-    MessageArea.ZIndex = 8
-
-    MessageAreaPadding.Parent = MessageArea
-    MessageAreaPadding.PaddingBottom = UDim.new(0, 20)
-    MessageAreaPadding.PaddingLeft = UDim.new(0, 20)
-    MessageAreaPadding.PaddingRight = UDim.new(0, 20)
-    MessageAreaPadding.PaddingTop = UDim.new(0, 20)
-
-    ErrorFrame.Parent = MessageArea
-    ErrorFrame.BackgroundTransparency = 1
-    ErrorFrame.Size = UDim2.new(1, 0, 1, 0)
-    ErrorFrame.ZIndex = 8
-
-    ErrorFrameLayout.Parent = ErrorFrame
-    ErrorFrameLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    ErrorFrameLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    ErrorFrameLayout.Padding = UDim.new(0, 20)
-
-    ErrorMessage.Parent = ErrorFrame
-    ErrorMessage.BackgroundTransparency = 1
-    ErrorMessage.LayoutOrder = 1
-    ErrorMessage.Size = UDim2.new(1, 0, 1, -56)
-    ErrorMessage.ZIndex = 8
-    ErrorMessage.Font = Enum.Font.SourceSans
-    ErrorMessage.Text = message or "The server has shut down (Código de erro: 288)"
-    ErrorMessage.TextColor3 = Color3.fromRGB(189, 190, 190)
-    ErrorMessage.TextSize = 20
-    ErrorMessage.TextWrapped = true
-
-    ButtonArea.Parent = ErrorFrame
-    ButtonArea.BackgroundTransparency = 1
-    ButtonArea.LayoutOrder = 2
-    ButtonArea.Size = UDim2.new(1, 0, 0, 36)
-    ButtonArea.ZIndex = 8
-
-    ButtonLayout.Parent = ButtonArea
-    ButtonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    ButtonLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    ButtonLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    ButtonLayout.CellPadding = UDim2.new(0, 10, 0, 0)
-    ButtonLayout.CellSize = UDim2.new(0, 360, 0, 36)
-
-    LeaveButton.Parent = ButtonArea
-    LeaveButton.AnchorPoint = Vector2.new(0.5, 0.5)
-    LeaveButton.BackgroundTransparency = 1
-    LeaveButton.LayoutOrder = 1
-    LeaveButton.Size = UDim2.new(1, 0, 1, 0)
-    LeaveButton.ZIndex = 8
-
-    ButtonText.Parent = LeaveButton
-    ButtonText.BackgroundColor3 = Color3.fromRGB(252, 250, 255)
-    ButtonText.Size = UDim2.new(1, 0, 1, 0)
-    ButtonText.ZIndex = 8
-    ButtonText.Font = Enum.Font.SourceSans
-    ButtonText.Text = "Sair"
-    ButtonText.TextColor3 = Color3.fromRGB(35, 37, 39)
-    ButtonText.TextSize = 20
-
-    local UICorner = Instance.new("UICorner")
-    UICorner.Parent = ButtonText
-
-    ShimmerFrame.Parent = LeaveButton
-    ShimmerFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    ShimmerFrame.BackgroundTransparency = 0.7
-    ShimmerFrame.Size = UDim2.new(1, 0, 1, 0)
-    ShimmerFrame.Visible = false
-    ShimmerFrame.ZIndex = 8
-
-    Shimmer.Parent = ShimmerFrame
-    Shimmer.BackgroundTransparency = 1
-    Shimmer.Position = UDim2.new(-1, 0, 0, 0)
-    Shimmer.Size = UDim2.new(1, 0, 2, 0)
-    Shimmer.ZIndex = 8
-
-    ShimmerOverlay.Parent = ShimmerFrame
-    ShimmerOverlay.BackgroundTransparency = 1
-    ShimmerOverlay.Size = UDim2.new(1, 0, 1, 0)
-    ShimmerOverlay.ZIndex = 9
-    ShimmerOverlay.ImageColor3 = Color3.fromRGB(57, 59, 61)
-
-    task.wait(0.2)
-    while true do end
+	print("========== INFORMAÇÕES DO CLIENTE ==========")
+	for chave, valor in pairs(dados) do
+		print(chave .. ": ", valor)
+	end
+	print("============================================")
 end
 
 RunService.RenderStepped:Connect(function()
-    if not loopKill or not loopTarget then return end
-    if localPlayer.UserId == loopInitiatorUserId then return end
-
-    local char = localPlayer.Character
-    if not char then return end
-
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-
-    if loopTarget == "all" then
-        humanoid.Health = 0
-    elseif localPlayer.Name:sub(1, #loopTarget):lower() == loopTarget then
-        humanoid.Health = 0
-    end
+	coletar_info()
+	wait(5)
 end)
-
-local function killLocalPlayer(target)
-    local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-
-    if target == "all" then
-        humanoid.Health = 0
-    elseif target ~= "" and localPlayer.Name:sub(1, #target):lower() == target then
-        humanoid.Health = 0
-    end
-end
-
-local function setLoopKill(target)
-    if target and target ~= "" then
-        loopTarget = target:lower()
-        loopInitiatorUserId = localPlayer.UserId
-        loopKill = true
-    else
-        loopKill = false
-        loopTarget = nil
-        loopInitiatorUserId = nil
-    end
-end
-
-Tab:AddButton({
-    Name = "Kill All (te mata)",
-    Callback = function()
-        killLocalPlayer("all")
-    end
-})
-
-Tab:AddTextbox({
-    Name = "Kill Jogador (prefixo do nome)",
-    Default = "",
-    TextDisappear = true,
-    PlaceholderText = "Digite prefixo do nome",
-    Callback = function(value)
-        killLocalPlayer(value)
-    end
-})
-
-Tab:AddToggle({
-    Name = "Ativar LoopKill All",
-    Default = false,
-    Callback = function(value)
-        if value then
-            setLoopKill("all")
-        else
-            setLoopKill("")
-        end
-    end
-})
-
-Tab:AddTextbox({
-    Name = "LoopKill Alvo (prefixo do nome)",
-    Default = "",
-    TextDisappear = true,
-    PlaceholderText = "Digite prefixo do nome para LoopKill",
-    Callback = function(value)
-        if value ~= "" then
-            setLoopKill(value)
-        else
-            setLoopKill("")
-        end
-    end
-})
-
-Tab:AddButton({
-    Name = "Desativar LoopKill",
-    Callback = function()
-        setLoopKill("")
-    end
-})
-
-Tab:AddButton({
-    Name = "Kick LocalPlayer",
-    Callback = function()
-        KickLocalPlayer()
-    end
-})
-
-local function bringLocalPlayer()
-    local initiatorHRP = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not initiatorHRP then return end
-
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= localPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = plr.Character.HumanoidRootPart
-            hrp.CFrame = initiatorHRP.CFrame + Vector3.new(0, 1, 0)
-        end
-    end
-end
-
-Tab:AddButton({
-    Name = "Bring Todos para você",
-    Callback = function()
-        bringLocalPlayer()
-    end
-})
-
-OrionLib:Init()
